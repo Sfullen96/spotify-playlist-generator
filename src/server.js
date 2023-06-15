@@ -1,15 +1,11 @@
 import express from "express";
-import cookieParser from "cookie-parser";
 import sessions from "express-session";
 import path from "path";
 import bodyParser from "body-parser";
-
-import getSetlists from "./setlistfm";
-
-const PORT = 3000;
-
 import login from "./login";
-import { callback, createPlaylist, getUserPlaylists, search } from "./spotify";
+import { callback, createPlaylistRequest, getUserPlaylists, search } from "./spotify";
+
+export const PORT = 5000;
 
 const oneDay = 1000 * 60 * 60 * 24;
 
@@ -21,7 +17,7 @@ app.use(
     saveUninitialized: true,
     cookie: { maxAge: oneDay },
     resave: false,
-  })
+  }),
 );
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -40,7 +36,7 @@ app.get("/create", (req, res) => {
   res.sendFile(path.join(__dirname, "../", "public", "create.html"));
 });
 
-app.post("/post-create", (req, res) => createPlaylist(req, res));
+app.post("/post-create", (req, res) => createPlaylistRequest(req, res));
 
 app.get("/get-playlists", (req, res) => getUserPlaylists(req, res));
 

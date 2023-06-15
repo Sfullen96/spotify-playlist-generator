@@ -1,12 +1,16 @@
 import axios from "axios";
 import uniq from "lodash/uniq";
-import getSetlists from "./setlistfm";
 import dotenv from "dotenv";
+import { sanitize } from "string-sanitizer";
+
+import { getSetlists } from "./setlistfm";
+import { PORT } from "./server";
+
 dotenv.config();
 const { SPOTIFY_CLIENT, SPOTIFY_SECRET } = process.env;
 
 export const callback = async (req, res) => {
-  const code = req.query.code;
+  const { code } = req.query;
 
   try {
     const tokenResponse = await axios({
@@ -15,22 +19,20 @@ export const callback = async (req, res) => {
       data: {
         grant_type: "authorization_code",
         code,
-        redirect_uri: "http://localhost:3000/callback",
+        redirect_uri: `http://localhost:${PORT}/callback`,
         client_id: SPOTIFY_CLIENT,
         client_secret: SPOTIFY_SECRET,
       },
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization:
-          "Basic " +
-          new Buffer.from(SPOTIFY_CLIENT + ":" + SPOTIFY_SECRET).toString(
-            "base64"
-          ),
+        Authorization: `Basic ${new Buffer.from(`${SPOTIFY_CLIENT}:${SPOTIFY_SECRET}`).toString(
+          "base64",
+        )}`,
       },
     });
 
     const accessToken = tokenResponse.data.access_token;
-    const refreshToken = tokenResponse.data.refreshToken;
+    const { refreshToken } = tokenResponse.data;
 
     req.session.accessToken = accessToken;
 
@@ -56,38 +58,32 @@ const getPlaylistItems = async (playlistId, accessToken) => {
   return items;
 };
 
-const getTrackUris = (tracks, limit, existingIds) => {
+const getTrackUris = (tracks, limit, existingIds, sort) => {
   // If there are more than x tracks, sort by popularity and use the first x
   let uris = [];
-  if (tracks.length > limit) {
-    uris = uniq(
-      tracks.sort(
-        (a, b) =>
-          b.data.tracks.items[0].popularity - a.data.tracks.items[0].popularity
-      )
-    )
-      .filter(
-        (response) =>
-          existingIds.indexOf(response.data.tracks.items[0].uri) === -1
-      )
+
+  if (sort === "popularity") {
+    uris = uniq(tracks.sort((a, b) => b.popularity - a.popularity))
+      .filter(response => existingIds.indexOf(response.uri) === -1)
       .slice(0, limit)
-      .map((response) => response.data.tracks.items[0].uri);
-  } else {
-    uris = uniq(tracks.map((response) => response.data.tracks.items[0].uri));
+      .map(response => response.uri);
   }
 
-  uris = existingIds.concat(uris);
+  if (sort === "set") {
+    uris = uniq(tracks)
+      .filter(response => existingIds.indexOf(response.uri) === -1)
+      .slice(0, limit)
+      .map(response => response.uri);
+  }
 
-  console.log(
-    `Adding ${uniq(uris).length - existingIds.length} tracks to playlist...`
-  );
+  console.log(`Adding ${uris.length} tracks to playlist...`);
   return uris;
 };
 
-const getCurrentUser = async (accessToken) => {
+const getCurrentUser = async accessToken => {
   try {
     return await axios({
-      url: `https://api.spotify.com/v1/me`,
+      url: "https://api.spotify.com/v1/me",
       method: "GET",
 
       headers: {
@@ -95,11 +91,27 @@ const getCurrentUser = async (accessToken) => {
       },
     });
   } catch (e) {
-    console.log(e);
+    console.log("getCurrentUser: ", e);
+    return e;
   }
 };
 
-export const createPlaylist = async (req, res) => {
+const createPlaylist = async (accessToken, name, userId) => {
+  const { data } = await axios({
+    url: `https://api.spotify.com/v1/users/${userId}/playlists`,
+    method: "POST",
+    data: {
+      name,
+    },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  return data;
+};
+
+export const createPlaylistRequest = async (req, res) => {
   if (!req.session.accessToken) {
     res.redirect("/login");
     return;
@@ -108,29 +120,18 @@ export const createPlaylist = async (req, res) => {
     data: { id },
   } = await getCurrentUser(req.session.accessToken);
 
-  const { data } = await axios({
-    url: `https://api.spotify.com/v1/users/${id}/playlists`,
-    method: "POST",
-    data: {
-      name: req.body.name,
-    },
-    headers: {
-      Authorization: `Bearer ${req.session.accessToken}`,
-    },
-  });
+  const data = await createPlaylist(req.session.accessToken, req.body.name, id);
 
-  res.send(data);
   console.log(`Created playlist ${req.body.name}!`);
+  res.send(data);
 };
 
 const addToPlaylist = async (playlistId, uris, accessToken) => {
   await axios({
-    url: `https://api.spotify.com/v1/playlists/${playlistId}/tracks?uris=${uris.join(
-      ","
-    )}`,
-    method: "PUT",
+    url: `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+    method: "POST",
     data: {
-      playlistId,
+      uris,
     },
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -140,36 +141,79 @@ const addToPlaylist = async (playlistId, uris, accessToken) => {
   console.log("Added!");
 };
 
-const getTracks = async (artistName, tracks, accessToken) => {
+export const getTracks = async (artistName, tracks, accessToken) => {
   const promises = [];
-  tracks.forEach(({ name }) => {
+
+  tracks.forEach(async ({ name }) => {
     console.log(`Searching for ${artistName} ${name}`);
+
     promises.push(
-      axios.get(
-        `https://api.spotify.com/v1/search?q=${encodeURIComponent(
-          `${artistName} ${name}`
+      axios({
+        method: "GET",
+        url: `https://api.spotify.com/v1/search?q=${encodeURIComponent(
+          `${sanitize(artistName)} ${name}`,
         )}&type=track`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      )
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        meta: { artistName, name },
+      }),
     );
   });
-
   const results = await Promise.all(promises);
 
-  console.log(`${results.length} results found out of ${promises.length}`);
-  return results;
+  const foundTracks = [];
+  results.forEach(({ data, config: { meta } }) => {
+    if (
+      data.tracks.items.find(
+        t =>
+          t.artists.find(
+            a => sanitize(a.name).toLowerCase() === sanitize(meta.artistName).toLowerCase(),
+          ) && t.name.toLowerCase() === meta.name.toLowerCase(),
+      )
+    ) {
+      foundTracks.push(
+        data.tracks.items.find(
+          t =>
+            t.artists.find(
+              a => sanitize(a.name).toLowerCase() === sanitize(meta.artistName).toLowerCase(),
+            ) && t.name.toLowerCase() === meta.name.toLowerCase(),
+        ),
+      );
+    }
+  });
+
+  console.log(`${foundTracks.length} results found out of ${promises.length}`);
+  return foundTracks;
 };
 
 export const search = async (req, res) => {
   try {
-    const artistName = req.body.artist;
-    const playlistId = req.body.playlistId || req.body.playlist;
-    console.log(req.body);
-    const tracks = await getSetlists(artistName);
+    if (!req.session.accessToken) {
+      res.redirect("/login");
+      return;
+    }
+
+    let { playlistId, sort, depth } = req.body;
+    const { artist: artistName } = req.body;
+
+    if (!sort) {
+      sort = "popularity";
+    }
+    if (!depth) {
+      depth = 2;
+    }
+
+    if (req.body?.playlistName) {
+      const {
+        data: { id },
+      } = await getCurrentUser(req.session.accessToken);
+
+      const result = await createPlaylist(req.session.accessToken, req.body.playlistName, id);
+      playlistId = result.id;
+    }
+
+    const tracks = await getSetlists(artistName, depth);
 
     let limit = 10;
 
@@ -187,16 +231,14 @@ export const search = async (req, res) => {
       return;
     }
 
-    const spotifyTracks = await getTracks(
-      artistName,
-      tracks,
-      req.session.accessToken
-    );
+    const spotifyTracks = await getTracks(artistName, tracks, req.session.accessToken);
 
     const items = await getPlaylistItems(playlistId, req.session.accessToken);
-    const existingIds = items.map((i) => i.track.uri);
+    const existingIds = items
+      .filter(i => i.track.artists.find(a => a.name.toLowerCase() === artistName.toLowerCase()))
+      .map(i => i.track.uri);
 
-    const uris = getTrackUris(spotifyTracks, limit, existingIds);
+    const uris = getTrackUris(spotifyTracks, limit, existingIds, sort);
 
     await addToPlaylist(playlistId, uris, req.session.accessToken);
 
@@ -208,19 +250,15 @@ export const search = async (req, res) => {
 };
 
 const getPlaylists = async (url, accessToken) => {
-  try {
-    const { data } = await axios({
-      url,
-      method: "GET",
+  const { data } = await axios({
+    url,
+    method: "GET",
 
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-    return { data };
-  } catch (e) {
-    throw e;
-  }
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return { data };
 };
 
 export const getUserPlaylists = async (req, res) => {
@@ -237,7 +275,7 @@ export const getUserPlaylists = async (req, res) => {
 
     const { data } = await getPlaylists(
       `https://api.spotify.com/v1/users/${id}/playlists?limit=50`,
-      req.session.accessToken
+      req.session.accessToken,
     );
     allData.push(data.items);
 
@@ -246,11 +284,9 @@ export const getUserPlaylists = async (req, res) => {
       for (let i = 0; (i + 1) * 50 < data.total; i += 1) {
         promises.push(
           getPlaylists(
-            `https://api.spotify.com/v1/users/${id}/playlists?limit=50&offset=${
-              (i + 1) * 50
-            }`,
-            req.session.accessToken
-          )
+            `https://api.spotify.com/v1/users/${id}/playlists?limit=50&offset=${(i + 1) * 50}`,
+            req.session.accessToken,
+          ),
         );
       }
       const responses = await Promise.all(promises);

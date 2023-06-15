@@ -20,7 +20,7 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
   </head>
   <body>
-    <form action="/post-search" method="post">
+    <form id="search-form">
       <div class="container-sm">
         <div class="mb-3 mt-5">
           <div class="container">
@@ -31,12 +31,7 @@
             </div>
             <div class="row">
               <div class="col-xs-12">
-                <input
-                  type="text"
-                  class="form-control"
-                  id="artist"
-                  name="artist"
-                />
+                <input type="text" class="form-control" id="artist" name="artist" />
               </div>
             </div>
           </div>
@@ -50,16 +45,45 @@
             </div>
             <div class="row">
               <div class="col-xs-12">
-                <input
-                  type="number"
-                  class="form-control"
-                  name="limit"
-                  id="limit"
-                />
+                <input type="number" class="form-control" name="limit" id="limit" />
               </div>
             </div>
           </div>
         </div>
+
+        <div class="mb-3">
+          <div class="container">
+            <div class="row">
+              <div class="col-xs-12">
+                <label for="depth" class="form-label">Depth</label>
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-xs-12">
+                <input type="number" value="2" class="form-control" name="depth" id="depth" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="container">
+            <div class="row">
+              <div class="col-xs-12">
+                <label for="sort" class="form-label">Sort by</label>
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-xs-12">
+                <select name="sort" id="sort" class="form-select">
+                  <option value="popularity">Popularity</option>
+                  <option value="set">Setlist order</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="mb-3" id="existing-playlists">
           <div class="container">
             <div class="row">
@@ -69,16 +93,13 @@
             </div>
             <div class="row">
               <div class="col-xs-12">
-                <select name="playlist" id="playlists" class="form-select">
+                <select name="playlistId" id="playlists" class="form-select">
                   <script>
                     $.get("/get-playlists", function (data, status) {
                       const select = $("#playlists");
 
                       $.each(data, function (key, value) {
-                        console.log(key, value);
-                        select.append(
-                          `<option value="${value.id}">${value.name}</option>`
-                        );
+                        select.append(`<option value="${value.id}">${value.name}</option>`);
                       });
                     });
                   </script>
@@ -96,35 +117,13 @@
           <div class="container">
             <div class="row">
               <div class="col-xs-12">
-                <label for="playlistName" class="form-label"
-                  >Create playlist</label
-                >
+                <label for="playlistName" class="form-label">Create playlist</label>
               </div>
             </div>
 
             <div class="row">
-              <div class="col-sm-10">
-                <input
-                  type="text"
-                  class="form-control"
-                  name="playlistName"
-                  id="playlistName"
-                />
-                <input
-                  type="hidden"
-                  name="playlistId"
-                  value=""
-                  id="playlistId"
-                />
-              </div>
-              <div class="col-sm-2">
-                <button
-                  type="button"
-                  class="btn btn-primary"
-                  id="post-create-playlist"
-                >
-                  Create
-                </button>
+              <div class="col-sm-12">
+                <input type="text" class="form-control" name="playlistName" id="playlistName" />
               </div>
             </div>
           </div>

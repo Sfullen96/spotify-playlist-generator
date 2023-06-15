@@ -6,7 +6,9 @@
   "scripts": {
     "build": "babel src -d dist",
     "main": "npm run build && node dist/index.js",
-    "start": "nodemon src/server.js --exec babel-node"
+    "start": "nodemon src/server.js --exec babel-node",
+    "prettier": "prettier --write \"src/**/*.js\"",
+    "lint:fix": "eslint src --ext .js,.jsx --quiet --fix"
   },
   "repository": {
     "type": "git",
@@ -34,14 +36,18 @@
     "node-fetch": "^3.3.1",
     "nodemon": "^2.0.22",
     "querystring": "^0.2.1",
-    "spotify-web-api-node": "^5.0.2"
+    "spotify-web-api-node": "^5.0.2",
+    "string-sanitizer": "^2.0.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.21.5",
     "@babel/core": "^7.22.1",
     "@vercel/ncc": "^0.36.0",
     "eslint": "^8.42.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-plugin-import": "^2.27.5"
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-prettier": "^4.2.1",
+    "prettier": "^2.8.8"
   }
 }

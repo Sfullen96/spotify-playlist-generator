@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
+import { PORT } from "./server";
+
 dotenv.config();
-const { SPOTIFY_CLIENT, SPOTIFY_SECRET } = process.env;
+const { SPOTIFY_CLIENT } = process.env;
 
 const login = async (req, res) => {
   const scopes = [
@@ -13,8 +15,8 @@ const login = async (req, res) => {
   ];
   res.redirect(
     `https://accounts.spotify.com/authorize?response_type=code&client_id=${SPOTIFY_CLIENT}&scope=${encodeURIComponent(
-      scopes.join(" ")
-    )}&redirect_uri=http://localhost:3000/callback&state=`
+      scopes.join(" "),
+    )}&redirect_uri=http://localhost:${PORT}/callback&state=`,
   );
 };
 
