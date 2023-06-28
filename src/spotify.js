@@ -68,9 +68,8 @@ const getTrackUris = (tracks, limit, existingIds, sort) => {
       .slice(0, limit)
       .map(response => response.uri);
   }
-
   if (sort === "set") {
-    uris = uniq(tracks)
+    uris = uniq(tracks.sort((a, b) => a.order - b.order))
       .filter(response => existingIds.indexOf(response.uri) === -1)
       .slice(0, limit)
       .map(response => response.uri);
@@ -144,19 +143,23 @@ const addToPlaylist = async (playlistId, uris, accessToken) => {
 export const getTracks = async (artistName, tracks, accessToken) => {
   const promises = [];
 
-  tracks.forEach(async ({ name }) => {
-    console.log(`Searching for ${artistName} ${name}`);
+  tracks.forEach(async ({ name, order }) => {
+    console.log(
+      `Searching for ${artistName} ${name} (${encodeURIComponent(
+        `${sanitize(artistName)} ${sanitize.keepSpace(name)}`,
+      )})`,
+    );
 
     promises.push(
       axios({
         method: "GET",
         url: `https://api.spotify.com/v1/search?q=${encodeURIComponent(
-          `${sanitize(artistName)} ${name}`,
+          `${sanitize(artistName)} ${sanitize.keepSpace(name)}`,
         )}&type=track`,
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-        meta: { artistName, name },
+        meta: { artistName, name, order },
       }),
     );
   });
@@ -169,17 +172,18 @@ export const getTracks = async (artistName, tracks, accessToken) => {
         t =>
           t.artists.find(
             a => sanitize(a.name).toLowerCase() === sanitize(meta.artistName).toLowerCase(),
-          ) && t.name.toLowerCase() === meta.name.toLowerCase(),
+          ) && sanitize(t.name).toLowerCase() === sanitize(meta.name).toLowerCase(),
       )
     ) {
-      foundTracks.push(
-        data.tracks.items.find(
+      foundTracks.push({
+        ...data.tracks.items.find(
           t =>
             t.artists.find(
               a => sanitize(a.name).toLowerCase() === sanitize(meta.artistName).toLowerCase(),
-            ) && t.name.toLowerCase() === meta.name.toLowerCase(),
+            ) && sanitize(t.name).toLowerCase() === sanitize(meta.name).toLowerCase(),
         ),
-      );
+        order: meta.order,
+      });
     }
   });
 
